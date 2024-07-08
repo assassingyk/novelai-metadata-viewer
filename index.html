@@ -8,6 +8,12 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
     <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
     <title>NovelAI metadata Viewer</title>
+    <style>
+      .textarea {
+          white-space: pre-wrap;
+          word-wrap: break-word;
+      }
+    </style>
 </head>
 
 <body>
@@ -52,7 +58,8 @@
                     <div class="field">
                         <label class="label">Raw Prompts</label>
                         <div class="control">
-                            <input class="input" type="text" placeholder="raw prompts" readonly :value="rawPrompts">
+                            <textarea class="textarea" placeholder="raw prompts" readonly :value="rawPrompts" rows="10"></textarea>
+                            <!-- <input class="input" type="text" placeholder="raw prompts" readonly :value="rawPrompts"> -->
                         </div>
                     </div>
                     <div class="columns">
@@ -101,7 +108,8 @@
                     <div class="field">
                         <label class="label">uc</label>
                         <div class="control">
-                            <input class="input" type="text" placeholder="image uc" readonly :value="uc">
+                            <textarea class="textarea" placeholder="image uc" readonly :value="uc" rows="5"></textarea>
+                            <!-- <input class="input" type="text" placeholder="image uc" readonly :value="uc"> -->
                         </div>
                     </div>
                     <div class="columns">

@@ -73,9 +73,17 @@
                         </div>
                         <div class="column">
                             <div class="field">
-                                <label class="label">Noise</label>
+                                <label class="label">Hight</label>
                                 <div class="control">
-                                    <input class="input" type="text" placeholder="Text input" readonly :value="noise">
+                                    <input class="input" type="text" placeholder="Text input" readonly :value="height">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="column">
+                            <div class="field">
+                                <label class="label">Width</label>
+                                <div class="control">
+                                    <input class="input" type="text" placeholder="Text input" readonly :value="width">
                                 </div>
                             </div>
                         </div>
@@ -91,10 +99,48 @@
                         </div>
                         <div class="column">
                             <div class="field">
+                                <label class="label">CFG rescale</label>
+                                <div class="control">
+                                    <input class="input" type="text" placeholder="Text input" readonly
+                                           :value="cfg_rescale">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="columns">
+                        <div class="column">
+                            <div class="field">
+                                <label class="label">Noise</label>
+                                <div class="control">
+                                    <input class="input" type="text" placeholder="Text input" readonly :value="noise">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="column">
+                            <div class="field">
                                 <label class="label">Strength</label>
                                 <div class="control">
                                     <input class="input" type="text" placeholder="Text input" readonly
                                            :value="strength">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="columns">
+                        <div class="column">
+                            <div class="field">
+                                <label class="label">SMEA</label>
+                                <div class="control">
+                                    <input class="input" type="text" placeholder="Text input" readonly :value="sm">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="column">
+                            <div class="field">
+                                <label class="label">DYN</label>
+                                <div class="control">
+                                    <input class="input" type="text" placeholder="Text input" readonly
+                                           :value="sm_dyn">
                                 </div>
                             </div>
                         </div>
@@ -136,6 +182,12 @@
                         <label class="label">Sampler</label>
                         <div class="control">
                             <input class="input" type="text" placeholder="Image sampler" readonly :value="sampler">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Request type</label>
+                        <div class="control">
+                            <input class="input" type="text" placeholder="Request type" readonly :value="request_type">
                         </div>
                     </div>
                     <div class="field">
@@ -195,15 +247,21 @@
           this.rawPrompts = metadata.tEXt.Description
           const _metadata = JSON.parse(metadata.tEXt.Comment)
           this.steps = _metadata.steps
+          this.height = _metadata.height
+          this.width = _metadata.width
           this.sampler = _metadata.sampler
           this.seed = _metadata.seed
           this.strength = _metadata.strength
-          this.noise = _metadata.noise
+          this.noise = _metadata.noise_schedule
           this.scale = _metadata.scale
           this.uc = _metadata.uc
           this.software = metadata.tEXt.Software
           this.source = metadata.tEXt.Source
           this.title = metadata.tEXt.Title
+          this.cfg_rescale = _metadata.cfg_rescale
+          this.sm = _metadata.sm
+          this.sm_dyn = _metadata.sm_dyn
+          this.request_type = _metadata.request_type
         } else {
           this.hasMetadata = false
         }

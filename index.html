@@ -48,7 +48,7 @@
                 </label>
             </div>
             <div class="columns">
-                <div class="column" v-if="hasMetadata">
+                <div class="column" v-if="hasMetadata && isNAIMetadata">
                     <div class="field">
                         <label class="label">Prompts</label>
                         <div class="tags">
@@ -86,6 +86,18 @@
                                     <input class="input" type="text" placeholder="Text input" readonly :value="width">
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Sampler</label>
+                        <div class="control">
+                            <input class="input" type="text" placeholder="Image sampler" readonly :value="sampler">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Request type</label>
+                        <div class="control">
+                            <input class="input" type="text" placeholder="Request type" readonly :value="request_type">
                         </div>
                     </div>
                     <div class="columns">
@@ -178,18 +190,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="field">
-                        <label class="label">Sampler</label>
-                        <div class="control">
-                            <input class="input" type="text" placeholder="Image sampler" readonly :value="sampler">
-                        </div>
-                    </div>
-                    <div class="field">
-                        <label class="label">Request type</label>
-                        <div class="control">
-                            <input class="input" type="text" placeholder="Request type" readonly :value="request_type">
-                        </div>
-                    </div>
+
                     <div class="field">
                         <label class="label">Title</label>
                         <div class="control">
@@ -199,6 +200,16 @@
                 </div>
                 <div class="column" v-if="!hasMetadata">
                     <p class="subtitle">This image doesn't seem to have Metadata!</p>
+                </div>
+                <div class="column" v-if="!isNAIMetadata">
+                    <p class="subtitle">This image doesn't seem to be created with Novel AI!</p>
+                    <div class="field">
+                        <label class="label">raw metadata</label>
+                        <div class="control">
+                            <textarea class="textarea" placeholder="raw metadata" readonly :value="rawmetadata" rows="5"></textarea>
+                            <!-- <input class="input" type="text" placeholder="image uc" readonly :value="uc"> -->
+                        </div>
+                    </div>
                 </div>
                 <div class="column">
                     <img id="preview" v-if="preview" :src="preview">
@@ -222,9 +233,12 @@
     data: {
       preview: null,
       hasMetadata: true,
+      isNAIMetadata: true,
       prompts: [],
       rawPrompts: "",
       steps: 0,
+      height: 0,
+      width: 0,
       sampler: "",
       seed: 0,
       strength: 0,
@@ -233,7 +247,12 @@
       uc: [],
       software: "",
       source: "",
-      title: ""
+      title: "",
+      cfg_rescale: 0,
+      sm: "",
+      sm_dyn: "",
+      request_type: "",
+      rawmetadata: "",
     },
     methods: {
       onFileChange: async function (e) {
@@ -241,27 +260,34 @@
         const fileArray = Array.from(files)
         const metadata = await this.getMetadata(fileArray[0])
         this.preview = URL.createObjectURL(fileArray[0])
-        if (metadata.tEXt) {
-          this.hasMetadata = true
-          this.prompts = metadata.tEXt.Description.split(",").map(t => t.trim()).filter(t => t.length !== 0)
-          this.rawPrompts = metadata.tEXt.Description
-          const _metadata = JSON.parse(metadata.tEXt.Comment)
-          this.steps = _metadata.steps
-          this.height = _metadata.height
-          this.width = _metadata.width
-          this.sampler = _metadata.sampler
-          this.seed = _metadata.seed
-          this.strength = _metadata.strength
-          this.noise = _metadata.noise_schedule
-          this.scale = _metadata.scale
-          this.uc = _metadata.uc
-          this.software = metadata.tEXt.Software
-          this.source = metadata.tEXt.Source
-          this.title = metadata.tEXt.Title
-          this.cfg_rescale = _metadata.cfg_rescale
-          this.sm = _metadata.sm
-          this.sm_dyn = _metadata.sm_dyn
-          this.request_type = _metadata.request_type
+        if (metadata.tEXt ) {
+            this.hasMetadata = true
+            if (metadata.tEXt.Description) {
+                this.isNAIMetadata = true
+                this.prompts = metadata.tEXt.Description.split(",").map(t => t.trim()).filter(t => t.length !== 0)
+                this.rawPrompts = metadata.tEXt.Description
+                const _metadata = JSON.parse(metadata.tEXt.Comment)
+                this.steps = _metadata.steps
+                this.height = _metadata.height
+                this.width = _metadata.width
+                this.sampler = _metadata.sampler
+                this.seed = _metadata.seed
+                this.strength = _metadata.strength
+                this.noise = _metadata.noise
+                this.scale = _metadata.scale
+                this.uc = _metadata.uc
+                this.software = metadata.tEXt.Software
+                this.source = metadata.tEXt.Source
+                this.title = metadata.tEXt.Title
+                this.cfg_rescale = _metadata.cfg_rescale
+                this.sm = _metadata.sm
+                this.sm_dyn = _metadata.sm_dyn
+                this.request_type = _metadata.request_type
+                }
+        else {
+          this.isNAIMetadata = false
+          this.rawmetadata = JSON.stringify(metadata.tEXt)
+        }
         } else {
           this.hasMetadata = false
         }

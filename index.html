@@ -20,13 +20,13 @@
 <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
     <div class="navbar-brand">
             <span class="navbar-item">
-                <p class="title">NovelAI metadata Viewer v1.0.1</p>
+                <p class="title">NovelAI metadata Viewer v1.0.5</p>
             </span>
     </div>
     <div class="navbar-end">
         <div class="navbar-item">
             <div class="buttons">
-                <a class="button is-light" href="https://github.com/rassi0429/novelai-metadata-viewer">
+                <a class="button is-light" href="https://github.com/assassingyk/novelai-metadata-viewer">
                     GitHub
                 </a>
             </div>
@@ -48,7 +48,7 @@
                 </label>
             </div>
             <div class="columns">
-                <div class="column" v-if="hasMetadata && isNAIMetadata">
+                <div class="column" v-if="isPNG && hasMetadata && isNAIMetadata">
                     <div class="field">
                         <label class="label">Prompts</label>
                         <div class="tags">
@@ -204,11 +204,14 @@
                         </div>
                     </div>
                 </div>
+                <div class="column" v-if="!isPNG">
+                    <p class="subtitle">This image is not a PNG file!</p>
+                </div>
                 <div class="column" v-if="!hasMetadata">
-                    <p class="subtitle">This image doesn't seem to have Metadata!</p>
+                    <p class="subtitle">This image doesn't seem to have metadata!</p>
                 </div>
                 <div class="column" v-if="!isNAIMetadata">
-                    <p class="subtitle">This image doesn't seem to be created with Novel AI!</p>
+                    <p class="subtitle">This image has metadata, but doesn't seem to be created with NovelAI!</p>
                     <div class="field">
                         <label class="label">raw metadata</label>
                         <div class="control">
@@ -238,6 +241,7 @@
     el: '#app',
     data: {
       preview: null,
+      isPNG: true,
       hasMetadata: true,
       isNAIMetadata: true,
       prompts: [],
@@ -264,7 +268,9 @@
       onFileChange: async function (e) {
         const files = e.target.files || e.dataTransfer.files;
         const fileArray = Array.from(files)
+        this.isPNG = false
         const metadata = await this.getMetadata(fileArray[0])
+        this.isPNG = true
         this.preview = URL.createObjectURL(fileArray[0])
         if (metadata.tEXt ) {
             this.hasMetadata = true

@@ -207,10 +207,10 @@
                 <div class="column" v-if="!isPNG">
                     <p class="subtitle">This image is not a PNG file!</p>
                 </div>
-                <div class="column" v-if="!hasMetadata">
+                <div class="column" v-if="isPNG && !hasMetadata">
                     <p class="subtitle">This image doesn't seem to have metadata!</p>
                 </div>
-                <div class="column" v-if="!isNAIMetadata">
+                <div class="column" v-if="isPNG && hasMetadata && !isNAIMetadata">
                     <p class="subtitle">This image has metadata, but doesn't seem to be created with NovelAI!</p>
                     <div class="field">
                         <label class="label">raw metadata</label>

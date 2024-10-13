@@ -1843,40 +1843,65 @@
                     this.isPNG = false
                     const exifmetadata = await this.getMetadata(fileArray[0])
                     this.isPNG = true
+                    const src = await asyncFileReaderAsDataURL(fileArray[0]);
+                    const Stealthmetadata = await getStealthExif(src);
                     this.preview = URL.createObjectURL(fileArray[0])
                     var metadata = {};
                     var _comment = {};
-                    var Stealthmetadata = '';
-                    if (exifmetadata.tEXt) {
-                        this.hasMetadata = true
-                        if (exifmetadata.tEXt.Description) {
-                            this.isNAIMetadata = true
 
-                            metadata = exifmetadata.tEXt
-                            _comment = JSON.parse(exifmetadata.tEXt.Comment)
-                        }
-                        else {
-                            this.isNAIMetadata = false
-                            this.rawmetadata = JSON.stringify(exifmetadata.tEXt, null, 2)
-                        }
-                    } else {
-                        const src = await asyncFileReaderAsDataURL(fileArray[0]);
-                        Stealthmetadata = await getStealthExif(src);
-                        if (Stealthmetadata) {
-                            this.hasMetadata = true
-                            metadata = Stealthmetadata;
-                            if (metadata.Description) {
-                                _comment = JSON.parse(metadata.Comment)
-                            }
-                            else {
-                                this.isNAIMetadata = false
-                                this.rawmetadata = JSON.stringify(metadata, null, 2)
-                            }
-                        } else {
-                            this.hasMetadata = false;
-                        }
-
+                    this.hasMetadata = false;
+                    this.isNAIMetadata = false;
+                    if (exifmetadata?.tEXt) {
+                        metadata = exifmetadata.tEXt;
                     }
+                
+                    // 合并 Stealthmetadata
+                    if (Stealthmetadata) {
+                        this.hasMetadata = true;
+                        // 合并两者，exifmetadata 优先
+                        metadata = {
+                            ...Stealthmetadata,
+                            ...metadata
+                        };
+                        }
+                    if (metadata){
+                        this.hasMetadata = true;
+                        if (metadata.Description) {
+                            this.isNAIMetadata = true;
+                            _comment = JSON.parse(metadata.Comment || '{}');
+                        } else {
+                            this.rawmetadata = JSON.stringify(metadata, null, 2);
+                        }
+                    }
+                    // if (exifmetadata.tEXt) {
+                    //     this.hasMetadata = true
+                    //     if (exifmetadata.tEXt.Description) {
+                    //         this.isNAIMetadata = true
+
+                    //         metadata = exifmetadata.tEXt
+                    //         _comment = JSON.parse(exifmetadata.tEXt.Comment)
+                    //     }
+                    //     else {
+                    //         this.isNAIMetadata = false
+                    //         this.rawmetadata = JSON.stringify(exifmetadata.tEXt, null, 2)
+                    //     }
+                    // } else {
+                        
+                    //     if (Stealthmetadata) {
+                    //         this.hasMetadata = true
+                    //         metadata = Stealthmetadata;
+                    //         if (metadata.Description) {
+                    //             _comment = JSON.parse(metadata.Comment)
+                    //         }
+                    //         else {
+                    //             this.isNAIMetadata = false
+                    //             this.rawmetadata = JSON.stringify(metadata, null, 2)
+                    //         }
+                    //     } else {
+                    //         this.hasMetadata = false;
+                    //     }
+
+                    // }
                     // console.log(typeof metadata);
                     // console.log(_comment);
                     if (this.isNAIMetadata) {

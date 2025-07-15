@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 
 <head>
     <meta charset="UTF-8">
@@ -7,13 +7,68 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
     <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+    <!-- 使用 exif-reader 替代旧的 exif-js，它能更好地支持 JPEG, WEBP, PNG -->
+    <script src="https://unpkg.com/exifreader@4.20.0/dist/exif-reader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
-    <title>NovelAI metadata Viewer</title>
+    <title>图像元数据查看器</title>
     <style>
         .textarea {
             white-space: pre-wrap;
             word-wrap: break-word;
+        }
+
+        .file.is-boxed {
+            width: 100%;
+        }
+
+        .file-label {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .file.is-boxed {
+            width: 100%;
+        }
+
+        .file-label {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        /* **NEW STYLES FOR OPTIMIZATION** */
+        .box {
+            /* Add some space between the boxes */
+            margin-bottom: 1.5rem;
+        }
+
+        .image-preview-container {
+            position: sticky;
+            /* Make the image preview stick on screen while scrolling */
+            top: 20px;
+            text-align: center;
+        }
+        .columns.are-inputs-aligned .column {
+        display: flex; /* 让列成为flex容器 */
+        }
+
+        .columns.are-inputs-aligned .field {
+            display: flex; /* 让字段成为flex容器 */
+            flex-direction: column; /* 设置flex方向为垂直 */
+            width: 100%; /* 确保字段填满列的宽度 */
+        }
+
+        .columns.are-inputs-aligned .control {
+            margin-top: auto; /* 这是关键！自动将上边距设为最大，将元素推到底部 */
+        }
+        #preview {
+            max-width: 100%;
+            max-height: 80vh;
+            /* Prevent very tall images from taking up the whole screen */
+            object-fit: contain;
+            /* Ensure aspect ratio is maintained without cropping */
+            border-radius: 4px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            /* Add a subtle shadow */
         }
     </style>
 </head>
@@ -22,7 +77,7 @@
     <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
         <div class="navbar-brand">
             <span class="navbar-item">
-                <p class="title">NovelAI metadata Viewer v2.0.0</p>
+                <p class="title">图像元数据查看器 v3.1.0</p>
             </span>
         </div>
         <div class="navbar-end">
@@ -31,7 +86,7 @@
                     <a class="button is-light" href="https://novelai.net/" target="_blank" rel="noopener noreferrer">
                         NovelAI
                     </a>
-                    <a class="button is-light" href="https://danbooru.donmai.us" target="_blank"
+                    <a class="button is-light" href="https://safebooru.donmai.us" target="_blank"
                         rel="noopener noreferrer">
                         Danbooru
                     </a>
@@ -46,246 +101,306 @@
     <div id="app" @dragover.prevent @drop.prevent="onFileChange">
         <div class="container is-max-desktop">
             <div class="section">
-                <p>This tool does NOT upload images to the server. It runs in your browser.</p>
-                <div class="file is-boxed">
-                    <label class="file-label">
-                        <input class="file-input" type="file" name="resume" accept=".png" @change="onFileChange">
+                <p class="subtitle is-6">本工具完全在浏览器本地运行，不会进行任何上传等网络通信。</p>
+                <div class="file is-boxed mb-5"> <label class="file-label">
+                        <input class="file-input" type="file" name="resume" accept=".png, .jpeg, .jpg, .webp"
+                            @change="onFileChange">
                         <span class="file-cta">
                             <span class="file-label">
-                                Choose a file or drop image
+                                选择或拖放一个图片文件 (PNG, JPEG, WEBP)
                             </span>
                         </span>
                     </label>
                 </div>
+
+                <div v-if="!hasFile" class="has-text-centered">
+                    <p class="title is-4">欢迎使用图像元数据查看器</p>
+                    <p class="subtitle is-6">请从上方选择或拖入一个图片文件来开始。</p>
+                </div>
+
+                <article v-if="hasFile && !isSupported" class="message is-danger">
+                    <div class="message-body">
+                        文件类型无法识别或不支持！请选择 PNG, JPEG, 或 WEBP 格式的图片。
+                    </div>
+                </article>
+                <article v-if="hasFile && isSupported && !hasMetadata" class="message is-info">
+                    <div class="message-body">
+                        这张图片中似乎没有任何元数据！
+                    </div>
+                </article>
+
                 <div class="columns">
-                    <div class="column" v-if="isPNG && hasMetadata && isNAIMetadata">
-                        <div v-if="v4_prompts.isV4">
+                    <div class="column is-two-thirds  are-inputs-aligned">
+                        <div v-if="hasFile && isSupported && hasMetadata && isNAIMetadata">
+
+                            <div v-if="v4_prompts.isV4">
+                                <div class="box">
+                                    <p class="title is-5">V4 基础提示词</p>
+                                    <div class="field">
+                                        <label class="label">基础提示词 (Base Prompt)</label>
+                                        <div class="control">
+                                            <textarea class="textarea" readonly :value="v4_prompts.base_prompt"
+                                                rows="8"></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="field">
+                                        <label class="label">基础负面提示词 (Base Negative Prompt)</label>
+                                        <div class="control">
+                                            <textarea class="textarea" readonly :value="v4_prompts.base_negative_prompt"
+                                                rows="4"></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-for="(char, index) in v4_prompts.characters" :key="index" class="box">
+                                    <p class="title is-5">角色 {{ index + 1 }}</p>
+                                    <div class="field">
+                                        <label class="label">角色提示词</label>
+                                        <div class="control">
+                                            <textarea class="textarea" readonly :value="char.prompt"
+                                                rows="3"></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="field">
+                                        <label class="label">角色负面提示词</label>
+                                        <div class="control">
+                                            <textarea class="textarea" readonly :value="char.negative_prompt"
+                                                rows="1"></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="field">
+                                        <label class="label">角色位置</label>
+                                        <div class="control">
+                                            <input class="input" type="text" readonly :value="char.position">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div v-else class="box">
+                                <div class="field">
+                                    <label class="label">提示词 (Prompt)</label>
+                                    <div class="control">
+                                        <textarea class="textarea" placeholder="raw prompts" readonly
+                                            :value="rawPrompts" rows="8"></textarea>
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="label">负面提示词 (Negative Prompt)</label>
+                                    <div class="control">
+                                        <textarea class="textarea" placeholder="image uc" readonly :value="uc"
+                                            rows="4"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="box">
+                                <p class="title is-5">生成参数</p>
+                                <div class="columns">
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">请求类型 (Request Type)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="request_type">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">模型 (Model)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="model">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="columns">
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">高度 (Height)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="height">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">宽度 (Width)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="width">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">步数 (Steps)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="steps">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">种子 (Seed)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="seed">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="columns">
+                                    <div class="column is-one-half">
+                                        <div class="field">
+                                            <label class="label">采样器 (Sampler)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="sampler">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-one-half">
+                                        <div class="field">
+                                            <label class="label">调度器 (Scheduler)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="noise_schedule">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="columns">
+                                    
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">引导系数 (CFG Scale)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="scale">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">重标定系数 (CFG Rescale)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="cfg_rescale">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="columns">
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">重绘强度 (Strength)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="strength">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">重绘噪声 (Noise)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="noise">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="columns">
+                                    <div class="column is-one-quarter">
+                                        <div class="field">
+                                            <label class="label">使用SMEA</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="sm">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-one-quarter">
+                                        <div class="field">
+                                            <label class="label">使用DYN</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="sm_dyn">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-one-quarter">
+                                        <div class="field">
+                                            <label class="label">使用Vibe</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="is_vibe">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-one-quarter">
+                                        <div class="field">
+                                            <label class="label">包含Vibe原图</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="has_vibe_org">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="box">
+                                <p class="title is-5">其他信息</p>
+                                <div class="columns">
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">软件 (Software)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="software">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">来源 (Source)</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="source">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="label">生成时间 (Generation time)</label>
+                                    <div class="control">
+                                        <input class="input" type="text" readonly :value="Generation_time">
+                                    </div>
+                                </div>
+                            </div>
+                            <details>
+                                <summary>显示/隐藏原始元数据</summary>
+                                <div class="details-content">
+                                    <div class="field">
+                                        <label class="label">原始元数据 (Raw Metadata)</label>
+                                        <div class="control">
+                                            <textarea class="textarea" placeholder="raw metadata" readonly
+                                                :value="rawmetadata" rows="20"></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+
+                        <div v-if="hasFile && isSupported && hasMetadata && !isNAIMetadata" class="box">
+                            <article class="message is-warning">
+                                <div class="message-body">
+                                    这张图片含有元数据，但似乎不是由 NovelAI 或兼容工具生成的。
+                                </div>
+                            </article>
                             <div class="field">
-                                <label class="label">Base Prompt</label>
+                                <label class="label">原始元数据 (Raw Metadata)</label>
                                 <div class="control">
-                                    <textarea class="textarea" readonly :value="v4_prompts.base_prompt"
-                                        rows="5"></textarea>
+                                    <textarea class="textarea" placeholder="raw metadata" readonly :value="rawmetadata"
+                                        rows="20"></textarea>
                                 </div>
-                            </div>
-                             <div class="field">
-                                <label class="label">Base Negative Prompt</label>
-                                <div class="control">
-                                    <textarea class="textarea" readonly :value="v4_prompts.base_negative_prompt"
-                                        rows="5"></textarea>
-                                </div>
-                            </div>
-                            <hr>
-                            <div v-for="(char, index) in v4_prompts.characters" :key="index">
-                                <h3 class="title is-4">Character {{ index + 1 }}</h3>
-                                <div class="field">
-                                    <label class="label">Character Prompt</label>
-                                    <div class="control">
-                                        <textarea class="textarea" readonly :value="char.prompt" rows="5"></textarea>
-                                    </div>
-                                </div>
-                                <div class="field">
-                                    <label class="label">Character Negative Prompt</label>
-                                    <div class="control">
-                                        <textarea class="textarea" readonly :value="char.negative_prompt" rows="1"></textarea>
-                                    </div>
-                                </div>
-                                <div class="field">
-                                    <label class="label">Character Position</label>
-                                    <div class="control">
-                                        <textarea class="textarea" readonly :value="char.position" rows="1"></textarea>
-                                    </div>
-                                </div>
-                                <hr>
                             </div>
                         </div>
+                    </div>
 
-                        <div v-else>
-                            <div class="field">
-                                <label class="label">Raw Prompts</label>
-                                <div class="control">
-                                    <textarea class="textarea" placeholder="raw prompts" readonly :value="rawPrompts"
-                                        rows="10"></textarea>
-                                </div>
-                            </div>
-                             <div class="field">
-                                <label class="label">uc</label>
-                                <div class="control">
-                                    <textarea class="textarea" placeholder="image uc" readonly :value="uc"
-                                        rows="5"></textarea>
-                                </div>
-                            </div>
+                    <div class="column is-one-third">
+                        <div class="image-preview-container">
+                            <img id="preview" v-if="preview" :src="preview">
+                            <p v-else-if="hasFile" class="has-text-grey-light has-text-centered">图片预览</p>
                         </div>
-
-                        <div class="columns">
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">Steps</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="Text input" readonly
-                                            :value="steps">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">Height</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="Text input" readonly
-                                            :value="height">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">Width</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="Text input" readonly
-                                            :value="width">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="columns">
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">Sampler</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="Image sampler" readonly
-                                            :value="sampler">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">Request type</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="Request type" readonly
-                                            :value="request_type">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="columns">
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">Scale</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="Text input" readonly
-                                            :value="scale">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">CFG rescale</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="Text input" readonly
-                                            :value="cfg_rescale">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="columns">
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">SMEA</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="SMEA on/off" readonly :value="sm">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">DYN</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="DYN on/off" readonly
-                                            :value="sm_dyn">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">Vibe Transfer</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="vibe on/off" readonly
-                                            :value="is_vibe">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="columns">
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">Noise</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="Text input" readonly
-                                            :value="noise">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">Strength</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="Text input" readonly
-                                            :value="strength">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="field">
-                            <label class="label">Seed</label>
-                            <div class="control">
-                                <input class="input" type="text" placeholder="Text input" readonly :value="seed">
-                            </div>
-                        </div>
-                       
-                        <div class="columns">
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">Software</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="Image software" readonly
-                                            :value="software">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="column">
-                                <div class="field">
-                                    <label class="label">Source</label>
-                                    <div class="control">
-                                        <input class="input" type="text" placeholder="image source" readonly
-                                            :value="source">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="field">
-                            <label class="label">Title</label>
-                            <div class="control">
-                                <input class="input" type="text" placeholder="Image title" readonly :value="title">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="column" v-if="!isPNG">
-                        <p class="subtitle">This image is not a PNG file!</p>
-                    </div>
-                    <div class="column" v-if="isPNG && !hasMetadata">
-                        <p class="subtitle">This image doesn't seem to have metadata!</p>
-                    </div>
-                    <div class="column" v-if="isPNG && hasMetadata && !isNAIMetadata">
-                        <p class="subtitle">This image has metadata, but doesn't seem to be created with NovelAI!</p>
-                        <div class="field">
-                            <label class="label">raw metadata</label>
-                            <div class="control">
-                                <textarea class="textarea" placeholder="raw metadata" readonly :value="rawmetadata"
-                                    rows="20"></textarea>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="column">
-                        <img id="preview" v-if="preview" :src="preview">
                     </div>
                 </div>
             </div>
@@ -294,47 +409,31 @@
     <footer class="footer">
         <div class="content has-text-centered ">
             <p>
-                This tool is not related to NovelAI<br>
-                <a href="https://github.com/rassi0429/novelai-metadata-viewer">GitHub (welcome PR,issues)</a>
-                The website content is licensed Apache 2.0 License.
+                本工具与 NovelAI 无关。<br>
+                基于 <a href="https://github.com/rassi0429/novelai-metadata-viewer">rassi0429/novelai-metadata-viewer</a>
+                修改增强。
             </p>
         </div>
     </footer>
     <script>
+        // --- 隐写数据读取模块 ---
         class DataReader {
             constructor(data) {
                 this.data = data;
                 this.index = 0;
             }
-
-            readBit() {
-                return this.data[this.index++];
-            }
-
-            readNBits(n) {
-                let bits = [];
-                for (let i = 0; i < n; i++) {
-                    bits.push(this.readBit());
-                }
-                return bits;
-            }
-
-            readByte() {
-                let byte = 0;
-                for (let i = 0; i < 8; i++) {
-                    byte |= this.readBit() << (7 - i);
-                }
-                return byte;
-            }
-
+            readBit() { return this.data[this.index++]; }
             readNBytes(n) {
                 let bytes = [];
                 for (let i = 0; i < n; i++) {
-                    bytes.push(this.readByte());
+                    let byte = 0;
+                    for (let j = 0; j < 8; j++) {
+                        byte |= this.readBit() << (7 - j);
+                    }
+                    bytes.push(byte);
                 }
                 return bytes;
             }
-
             readInt32() {
                 let bytes = this.readNBytes(4);
                 return new DataView(new Uint8Array(bytes).buffer).getInt32(0, false);
@@ -344,16 +443,11 @@
         const asyncFileReaderAsDataURL = (file) => {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
-                reader.onload = (e) => {
-                    resolve(e.target.result);
-                };
-                reader.onerror = (e) => {
-                    reject(e);
-                };
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(e);
                 reader.readAsDataURL(file);
             });
         };
-
 
         async function getStealthExif(src) {
             let time = performance.now();
@@ -403,181 +497,280 @@
 
             return null;
         }
-    </script>
-    <script>
+        // --- Vue App ---
         var app = new Vue({
             el: '#app',
             data: {
                 preview: null,
-                isPNG: true,
+                hasFile: false,
+                isSupported: true,
                 hasMetadata: true,
                 isNAIMetadata: true,
                 rawPrompts: "",
-                steps: 0,
-                height: 0,
-                width: 0,
-                sampler: "",
-                seed: 0,
-                strength: 0,
-                noise: 0,
-                scale: 0,
-                uc: "",
                 software: "",
                 source: "",
+                model: "",
                 title: "",
-                cfg_rescale: 0,
+                Generation_time: "",
+                
+                steps: "",
+                height: "",
+                width: "",
+                sampler: "",
+                seed: "",
+                strength: "",
+                noise: "",
+                noise_schedule: "",
+                scale: "",
+                uc: "",
+                
+                cfg_rescale: "",
                 sm: "",
                 sm_dyn: "",
                 request_type: "",
                 rawmetadata: "",
-                reference_information_extracted_multiple: [],
-                reference_strength_multiple: [],
                 is_vibe: false,
+                has_vibe_org: false,
                 v4_prompts: {
                     isV4: false,
                     base_prompt: "",
                     base_negative_prompt: "",
-                    characters: [] // { prompt: "", negative_prompt: "" }
+                    characters: []
                 }
             },
             methods: {
-                resetState: function() {
-                    // Reset all data properties to their initial state
-                    this.preview = null;
-                    this.isPNG = true;
-                    this.hasMetadata = true;
-                    this.isNAIMetadata = true;
-                    this.rawPrompts = "";
-                    this.steps = 0;
-                    this.height = 0;
-                    this.width = 0;
-                    this.sampler = "";
-                    this.seed = 0;
-                    this.strength = 0;
-                    this.noise = 0;
-                    this.scale = 0;
-                    this.uc = "";
-                    this.software = "";
-                    this.source = "";
-                    this.title = "";
-                    this.cfg_rescale = 0;
-                    this.sm = "";
-                    this.sm_dyn = "";
-                    this.request_type = "";
-                    this.rawmetadata = "";
-                    this.reference_information_extracted_multiple = [];
-                    this.reference_strength_multiple = [];
-                    this.is_vibe = false;
-                    this.v4_prompts = {
-                        isV4: false,
-                        base_prompt: "",
-                        base_negative_prompt: "",
-                        characters: []
-                    };
+                resetState: function () {
+                    Object.assign(this.$data, this.$options.data());
+                },
+                getFileTypeFromArrayBuffer: function (arrayBuffer) {
+                    const uint8a = new Uint8Array(arrayBuffer.slice(0, 12));
+
+                    // PNG: 89 50 4E 47 0D 0A 1A 0A
+                    if (uint8a[0] === 0x89 && uint8a[1] === 0x50 && uint8a[2] === 0x4E && uint8a[3] === 0x47) {
+                        return 'image/png';
+                    }
+                    // JPEG: FF D8 FF
+                    if (uint8a[0] === 0xFF && uint8a[1] === 0xD8 && uint8a[2] === 0xFF) {
+                        return 'image/jpeg';
+                    }
+                    // WEBP: RIFF .... WEBP
+                    const textDecoder = new TextDecoder();
+                    if (textDecoder.decode(uint8a.slice(0, 4)) === 'RIFF' && textDecoder.decode(uint8a.slice(8, 12)) === 'WEBP') {
+                        return 'image/webp';
+                    }
+                    return null; // Unknown type
                 },
                 onFileChange: async function (e) {
                     this.resetState();
                     const files = e.target.files || e.dataTransfer.files;
                     if (files.length === 0) return;
-                    
+
                     const file = files[0];
-                    if (file.type !== 'image/png') {
-                        this.isPNG = false;
-                        this.hasMetadata = false;
-                        this.isNAIMetadata = false;
+                    this.hasFile = true;
+
+                    // Read file content to determine actual type
+                    const arrayBuffer = await file.arrayBuffer();
+                    const actualFileType = this.getFileTypeFromArrayBuffer(arrayBuffer);
+                    console.log("Detected file type:", actualFileType);
+
+                    if (!actualFileType) {
+                        this.isSupported = false;
                         return;
                     }
+                    this.isSupported = true;
+                    // Create a blob with the correct type to ensure the browser can display it
+                    const blob = new Blob([arrayBuffer], { type: actualFileType });
+                    this.preview = URL.createObjectURL(blob);
 
-                    this.isPNG = true;
-                    this.preview = URL.createObjectURL(file);
+                    let allMetadata = {};
 
-                    const exifmetadata = await this.getMetadata(file);
-                    const src = await asyncFileReaderAsDataURL(file);
-                    const stealthMetadata = await getStealthExif(src);
-
-                    let metadata = {};
-                    if (exifmetadata && exifmetadata.tEXt) {
-                        metadata = { ...exifmetadata.tEXt };
-                    }
-                    if (stealthMetadata) {
-                         // Merge, stealthMetadata has higher priority for NovelAI specific fields
-                        metadata = { ...metadata, ...stealthMetadata };
-                    }
-                    
-                    if (Object.keys(metadata).length === 0) {
-                        this.hasMetadata = false;
-                        this.isNAIMetadata = false;
-                        return;
-                    }
-
-                    this.hasMetadata = true;
-                    
-                    if (metadata.Software === 'NovelAI' && metadata.Description && metadata.Comment) {
-                        this.isNAIMetadata = true;
-                        this.software = metadata.Software;
-                        this.source = metadata.Source;
-                        this.title = metadata.Title;
-                        this.rawPrompts = metadata.Description;
-
-                        let _comment;
+                    // 1. 读取 PNG tEXt/iTXt 数据块
+                    if (actualFileType === 'image/png') {
                         try {
-                           _comment = JSON.parse(metadata.Comment);
-                        } catch(error) {
-                            console.error("Failed to parse Comment JSON:", error);
-                            this.isNAIMetadata = false;
-                            this.rawmetadata = JSON.stringify(metadata, null, 2);
-                            return;
+                            const pngChunks = this.readPngChunks(arrayBuffer);
+                            if (pngChunks.tEXt) {
+                                allMetadata = { ...allMetadata, ...pngChunks.tEXt };
+                            }
+                        } catch (err) {
+                            console.error("读取 PNG 数据块失败:", err);
+                        }
+                    }
+
+                    // 2. 使用 ExifReader 读取 EXIF/XMP (支持 JPEG, WEBP, PNG)
+                    try {
+                        // Pass arrayBuffer directly to ExifReader
+                        const exifData = await ExifReader.load(arrayBuffer, { expanded: true });
+                        if (exifData.exif) {
+                            Object.keys(exifData.exif).forEach(key => {
+                                if (exifData.exif[key] && exifData.exif[key].description) {
+                                    allMetadata[key] = exifData.exif[key].description;
+                                }
+                            });
+                        }
+                        if (exifData.xmp) {
+                            Object.keys(exifData.xmp).forEach(key => {
+                                if (exifData.xmp[key] && exifData.xmp[key].description) {
+                                    allMetadata[key] = exifData.xmp[key].description;
+                                }
+                            });
+                        }
+                    } catch (err) {
+                        console.error("ExifReader 读取失败:", err);
+                    }
+
+                    // 3. 尝试读取隐写数据 (支持 PNG, WEBP)
+                    if (actualFileType === 'image/png' || actualFileType === 'image/webp') {
+                        console.log("尝试读取隐写数据...");
+                        try {
+                            const src = await asyncFileReaderAsDataURL(file);
+                            // Use the preview URL which is created from the correct blob type
+                            const stealthMetadata = await getStealthExif(src);
+                            if (stealthMetadata) {
+                                console.log("隐写数据读取成功:", stealthMetadata);
+                                allMetadata = { ...allMetadata, ...stealthMetadata };
+                            }
+                            else {
+                                console.log("未找到隐写数据");
+                            }
+                        } catch (err) {
+                            console.error("读取隐写数据失败:", err);
+                        }
+                    }
+
+                    // 4. 检查关键字段是否为 JSON 字符串并解析
+                    const fieldsToCheck = ['Comment', 'UserComment', 'Description', 'ImageDescription', 'parameters'];
+                    for (const field of fieldsToCheck) {
+                        if (allMetadata[field] && typeof allMetadata[field] === 'string') {
+                            try {
+                                const parsedJson = JSON.parse(allMetadata[field]);
+                                allMetadata = { ...allMetadata, ...parsedJson };
+                            } catch (e) {
+                                // Not JSON, ignore error
+                            }
+                        }
+                    }
+
+                    if (Object.keys(allMetadata).length === 0) {
+                        this.hasMetadata = false;
+                        return;
+                    }
+                    this.hasMetadata = true;
+                    this.rawmetadata = JSON.stringify(allMetadata, null, 2);
+
+                    // 5. 填充UI
+                    const isNai = (allMetadata.Software === 'NovelAI' || allMetadata.software === 'NovelAI') &&
+                        (allMetadata.Description || allMetadata.description) &&
+                        (allMetadata.Comment || allMetadata.comment);
+                    const isSd = allMetadata.parameters; // Stable Diffusion WebUI
+
+                    if (isNai) {
+                        this.isNAIMetadata = true;
+
+                        let commentData = {};
+                        if (isNai) {
+                            const rawComment = allMetadata.Comment || allMetadata.comment || '{}';
+                            try {
+                                commentData = typeof rawComment === 'string' ? JSON.parse(rawComment) : rawComment;
+                            } catch (error) {
+                                console.error("解析 Comment JSON 失败:", error);
+                                this.isNAIMetadata = false;
+                                // this.rawmetadata = JSON.stringify(allMetadata, null, 2);
+                                return;
+                            }
                         }
 
+                        // 填充通用字段
+                        this.software = allMetadata.Software || allMetadata.software || (isSd ? "Stable Diffusion" : "Unknown");
+                        this.source = allMetadata.Source || allMetadata.source;
+                        this.title = allMetadata.Title || allMetadata.title;
+                        this.rawPrompts = allMetadata.Description || allMetadata.description || allMetadata.parameters;
+                        this.Generation_time = allMetadata["Generation time"] 
 
-                        // Populate common fields
-                        this.steps = _comment.steps;
-                        this.height = _comment.height;
-                        this.width = _comment.width;
-                        this.sampler = _comment.sampler;
-                        this.seed = _comment.seed;
-                        this.strength = _comment.strength;
-                        this.noise = _comment.noise;
-                        this.scale = _comment.scale;
-                        this.uc = _comment.uc;
-                        this.cfg_rescale = _comment.cfg_rescale;
-                        this.sm = _comment.sm;
-                        this.sm_dyn = _comment.sm_dyn;
-                        this.request_type = _comment.request_type;
-                        this.reference_information_extracted_multiple = _comment.reference_information_extracted_multiple || [];
-                        this.reference_strength_multiple = _comment.reference_strength_multiple || [];
-                        this.is_vibe = this.reference_information_extracted_multiple.length > 0 || this.reference_strength_multiple.length > 0;
 
-                        // Check for V4 prompts
-                        if (_comment.v4_prompt && _comment.v4_negative_prompt) {
+                        this.steps = commentData.steps || allMetadata.Steps;
+                        this.height = commentData.height || allMetadata.Height;
+                        this.width = commentData.width || allMetadata.Width;
+                        this.sampler = commentData.sampler || allMetadata.Sampler;
+                        this.seed = commentData.seed || allMetadata.Seed;
+                        this.strength = commentData.strength || allMetadata.Strength || "N/A";
+                        this.noise = commentData.noise || allMetadata.Noise || "N/A";
+                        this.noise_schedule = commentData.noise_schedule || allMetadata.NoiseSchedule || "N/A";
+                        this.scale = commentData.scale || allMetadata['CFG scale'];
+                        this.uc = commentData.uc || allMetadata['Negative prompt'];
+                        this.cfg_rescale = commentData.cfg_rescale;
+                        this.sm = commentData.sm ? 'Yes' : 'No';
+                        this.sm_dyn = commentData.sm_dyn ? 'Yes' : 'No';
+                        this.request_type = commentData.request_type;
+                        
+                        const hasVibe = (commentData.reference_information_extracted_multiple?.length > 0) ||
+                            (commentData.reference_strength_multiple?.length > 0);
+                        const hasVibeorg = commentData.reference_image_multiple
+                        // console.log("Vibe Transfer:", hasVibe, hasVibeorg);
+                        this.is_vibe = hasVibe ? 'Yes' : 'No';
+                        this.has_vibe_org = hasVibeorg ? 'Yes' : 'No';
+                        
+                        if (this.request_type === 'PromptGenerateRequest') {
+                            if (hasVibe) {
+                                this.request_type = 'Vibe转移提示词生成 (PromptGenerateRequest with Vibe Transfer)';
+                            } else {
+                                this.request_type = '提示词生成 (PromptGenerateRequest)';
+                            }
+                        } else if (this.request_type === 'Img2ImgRequest') {
+                            if (hasVibe) {
+                                this.request_type = 'Vibe转移图生图生成 (Img2ImgRequest with Vibe Transfer)';
+                            } else {
+                                this.request_type = '图生图生成 (Img2ImgRequest)';
+                            }
+                        } else if (this.request_type === 'NativeInfillingRequest') {
+                            this.request_type = '图像修复生成 (NativeInfillingRequest)';
+                        } else {
+                            this.request_type = '未知请求类型';
+                        }
+                        const modelDict = {
+                            'Stable Diffusion XL 7BCCAA2C': 'NovelAI_v3_summer_update',
+                            'Stable Diffusion XL 1120E6A9': 'NovelAI_v3_inpaint',
+                            'Stable Diffusion XL C1E1DE52': 'NovelAI_v3',
+                            'NovelAI Diffusion V4 BC59C602': 'NovelAI_v4_preview',
+                            'NovelAI Diffusion V4 F6E18726': 'NovelAI_v4_preview_1223',
+                            'NovelAI Diffusion V4 7ABFFA2A': 'NovelAI_v4_preview_after_vt',
+                            'NovelAI Diffusion V4 4F49EC75': 'NovelAI_v4',
+                            'NovelAI Diffusion V4 79F47848': 'NovelAI_v4_minor_update',
+                            'NovelAI Diffusion V4 F6302A9D': 'NovelAI_v4_inpaint',
+                            'NovelAI Diffusion V4 37442FCA': 'NovelAI_v4_after_vt',
+                            'NovelAI Diffusion V4 CA4B7203': 'NovelAI_v4_preview_inpaint',
+                            'NovelAI Diffusion V4.5 B5A2A797': 'NovelAI_v4.5_preview',
+                            'NovelAI Diffusion V4.5 B9F340FD': 'NovelAI_v4.5',
+                            'NovelAI Diffusion V4.5 5AB81C7C': 'NovelAI_v4.5_inpaint',
+                            'NovelAI Diffusion V4.5 C02D4F98': 'NovelAI_v4.5_preview_after_vt',
+                            'NovelAI Diffusion V4.5 4BDE2A90': 'NovelAI_v4.5_after_vt',
+                            'NovelAI Diffusion V4.5 1229B44F': 'NovelAI_v4.5_inpaint', // 注意：这个俗名与上面的一个重复
+                        }
+                        if (this.source && this.source in modelDict) {
+                            this.model = modelDict[this.source];
+                        } else {
+                            this.model = "未知模型";
+                        }
+
+                        if (commentData.v4_prompt && commentData.v4_negative_prompt) {
                             this.v4_prompts.isV4 = true;
-                            const v4p = _comment.v4_prompt.caption;
-                            const v4n = _comment.v4_negative_prompt.caption;
-
+                            const v4p = commentData.v4_prompt.caption;
+                            const v4n = commentData.v4_negative_prompt.caption;
                             this.v4_prompts.base_prompt = v4p.base_caption || "N/A";
                             this.v4_prompts.base_negative_prompt = v4n.base_caption || "N/A";
-                            
+                            this.v4_prompts.characters = []; // Reset characters
                             const charCaptions = v4p.char_captions || [];
                             const negCharCaptions = v4n.char_captions || [];
-
                             const numChars = Math.max(charCaptions.length, negCharCaptions.length);
-
                             for (let i = 0; i < numChars; i++) {
                                 const centers = charCaptions[i]?.centers;
                                 let positionText = "N/A";
-                                
-                                // 检查 `centers` 是否是一个有效的数组
                                 if (centers && Array.isArray(centers) && centers.length > 0) {
-                                    // 将坐标对象数组格式化为字符串
-                                    positionText = centers.map(c => `x: ${c.x}, y: ${c.y}`).join('; ');
-                                } else if (centers) {
-                                    // 为其他意外情况提供备用显示
-                                    positionText = String(centers);
+                                    positionText = centers.map(c => `x: ${c.x.toFixed(3)}, y: ${c.y.toFixed(3)}`).join('; ');
                                 }
                                 this.v4_prompts.characters.push({
                                     prompt: charCaptions[i]?.char_caption || "N/A",
                                     negative_prompt: negCharCaptions[i]?.char_caption || "N/A",
-                                    position: positionText || "N/A",
+                                    position: positionText,
                                 });
                             }
                         } else {
@@ -586,182 +779,70 @@
 
                     } else {
                         this.isNAIMetadata = false;
-                        this.rawmetadata = JSON.stringify(metadata, null, 2);
+                        // this.rawmetadata = JSON.stringify(allMetadata, null, 2);
                     }
                 },
-                getMetadata: function (file) {
-                    return new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.readAsArrayBuffer(file);
-                        reader.onload = () => {
-                            try {
-                                const metadata = this.readMetadata(reader.result)
-                                resolve(metadata)
-                            } catch(e) {
-                                console.error("Error reading metadata from PNG:", e);
-                                resolve({}); // Resolve with empty object on error
-                            }
-                        };
-                        reader.onerror = (err) => {
-                             console.error("FileReader error:", err);
-                             reject(err);
-                        }
-                    })
-                },
-                readMetadata: function (buffer) {
+                readPngChunks: function (buffer) {
                     const result = {};
-                    const chunks = this.extractChunks(buffer);
+                    const chunks = this.extractPngChunks(buffer);
                     chunks.forEach(chunk => {
-                        switch (chunk.name) {
-                            case 'tEXt':
-                                if (!result.tEXt) {
-                                    result.tEXt = {};
-                                }
-                                // eslint-disable-next-line no-case-declarations
-                                const textChunk = this.textDecode(chunk.data);
-                                result.tEXt[textChunk.keyword] = textChunk.text;
-                                break
-                            case 'pHYs':
-                                result.pHYs = {
-                                    // Pixels per unit, X axis: 4 bytes (unsigned integer)
-                                    "x": this.readUint32(chunk.data, 0),
-                                    // Pixels per unit, Y axis: 4 bytes (unsigned integer)
-                                    "y": this.readUint32(chunk.data, 4),
-                                    "unit": chunk.data[8],
-                                }
-                                break
-                            case 'iTXt':
-                                if (!result.tEXt) {
-                                    result.tEXt = {};
-                                }
-                                const textDecode = this.textDecode(chunk.data);
-                                // console.log(textDecode);
-                                // ヘッダーのいらない部分を削除
-                                result.tEXt[textDecode.keyword] = textDecode.text.replaceAll("\x00", "")
-                                break
-                            case 'gAMA':
-                            case 'cHRM':
-                            case 'sRGB':
-                            case 'IHDR':
-                            case 'iCCP':
-                            default:
-                                result[chunk.name] = true;
+                        if (chunk.name === 'tEXt' || chunk.name === 'iTXt') {
+                            if (!result.tEXt) result.tEXt = {};
+                            const textChunk = this.textDecode(chunk.data);
+                            result.tEXt[textChunk.keyword] = textChunk.text.replaceAll("\x00", "");
                         }
-                    })
+                    });
                     return result;
                 },
-                extractChunks: function (_data) {
-                    // from https://github.com/hughsk/png-chunks-extract
-                    const data = new Uint8Array(_data)
-                    if (data[0] !== 0x89) throw new Error('Invalid .png file header')
-                    if (data[1] !== 0x50) throw new Error('Invalid .png file header')
-                    if (data[2] !== 0x4E) throw new Error('Invalid .png file header')
-                    if (data[3] !== 0x47) throw new Error('Invalid .png file header')
-                    if (data[4] !== 0x0D) throw new Error('Invalid .png file header: possibly caused by DOS-Unix line ending conversion?')
-                    if (data[5] !== 0x0A) throw new Error('Invalid .png file header: possibly caused by DOS-Unix line ending conversion?')
-                    if (data[6] !== 0x1A) throw new Error('Invalid .png file header')
-                    if (data[7] !== 0x0A) throw new Error('Invalid .png file header: possibly caused by DOS-Unix line ending conversion?')
+                extractPngChunks: function (_data) {
+                    const data = new Uint8Array(_data);
+                    const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+                    for (let i = 0; i < pngSignature.length; i++) {
+                        if (data[i] !== pngSignature[i]) throw new Error('无效的 PNG 文件头');
+                    }
 
-                    let ended = false
-                    const chunks = []
-                    let idx = 8
-
-                    const uint8 = new Uint8Array(4)
-                    // const int32 = new Int32Array(uint8.buffer)
-                    const uint32 = new Uint32Array(uint8.buffer)
+                    let ended = false;
+                    const chunks = [];
+                    let idx = 8;
+                    const dataView = new DataView(data.buffer);
 
                     while (idx < data.length) {
-                        uint8[3] = data[idx++]
-                        uint8[2] = data[idx++]
-                        uint8[1] = data[idx++]
-                        uint8[0] = data[idx++]
-                        const length = uint32[0] + 4
-                        const chunk = new Uint8Array(length)
-                        chunk[0] = data[idx++]
-                        chunk[1] = data[idx++]
-                        chunk[2] = data[idx++]
-                        chunk[3] = data[idx++]
-                        const name = (
-                            String.fromCharCode(chunk[0]) +
-                            String.fromCharCode(chunk[1]) +
-                            String.fromCharCode(chunk[2]) +
-                            String.fromCharCode(chunk[3])
-                        )
+                        const length = dataView.getUint32(idx, false);
+                        idx += 4;
+                        const name = String.fromCharCode(data[idx], data[idx + 1], data[idx + 2], data[idx + 3]);
+                        idx += 4;
 
-                        // The IHDR header MUST come first.
-                        if (!chunks.length && name !== 'IHDR') {
-                            throw new Error('IHDR header missing')
-                        }
+                        const chunkData = new Uint8Array(data.buffer, idx, length);
+                        chunks.push({ name, data: chunkData });
+
+                        idx += length;
+                        idx += 4; // Skip CRC
 
                         if (name === 'IEND') {
-                            ended = true
-                            chunks.push({
-                                name,
-                                data: new Uint8Array(0)
-                            })
-
-                            break
+                            ended = true;
+                            break;
                         }
-
-                        for (let i = 4; i < length; i++) {
-                            chunk[i] = data[idx++]
-                        }
-
-                        uint8[3] = data[idx++]
-                        uint8[2] = data[idx++]
-                        uint8[1] = data[idx++]
-                        uint8[0] = data[idx++]
-
-                        const chunkData = new Uint8Array(chunk.buffer.slice(4))
-
-                        chunks.push({
-                            name,
-                            data: chunkData
-                        })
                     }
 
-                    if (!ended) {
-                        throw new Error('.png file ended prematurely: no IEND header was found')
-                    }
-
-                    return chunks
+                    if (!ended) throw new Error('.png 文件提前结束：未找到 IEND 块');
+                    return chunks;
                 },
                 textDecode: function (data) {
-                    if (data.data && data.name) {
-                        data = data.data
-                    }
-
-                    let naming = true
-                    let text = ''
-                    let name = ''
+                    let name = '';
+                    let textStartIndex = 0;
 
                     for (let i = 0; i < data.length; i++) {
-                        const code = data[i]
-                        if (naming) {
-                            if (code) {
-                                name += String.fromCharCode(code)
-                            } else {
-                                naming = false
-                            }
-                        } else {
-                            const text_decoder = new TextDecoder("utf-8");
-                            const str = text_decoder.decode(Uint8Array.from(data.slice(i)).buffer);
-                            text = str
-                            break
+                        if (data[i] === 0) {
+                            textStartIndex = i + 1;
+                            break;
                         }
+                        name += String.fromCharCode(data[i]);
                     }
 
-                    return {
-                        keyword: name,
-                        text
-                    }
-                },
-                readUint32: function (uint8array, offset) {
-                    const byte1 = uint8array[offset++];
-                    const byte2 = uint8array[offset++];
-                    const byte3 = uint8array[offset++];
-                    const byte4 = uint8array[offset];
-                    return 0 | (byte1 << 24) | (byte2 << 16) | (byte3 << 8) | byte4;
+                    const text_decoder = new TextDecoder("utf-8");
+                    const text = text_decoder.decode(data.slice(textStartIndex));
+
+                    return { keyword: name, text };
                 }
             }
         })

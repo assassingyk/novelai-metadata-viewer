@@ -336,6 +336,14 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <div class="column is-one-quarter">
+                                        <div class="field">
+                                            <label class="label">使用角色参考</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="is_char_ref">
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -531,6 +539,8 @@
                 rawmetadata: "",
                 is_vibe: false,
                 has_vibe_org: false,
+                is_char_ref: "No",
+                
                 v4_prompts: {
                     isV4: false,
                     base_prompt: "",
@@ -708,17 +718,23 @@
                         // console.log("Vibe Transfer:", hasVibe, hasVibeorg);
                         this.is_vibe = hasVibe ? 'Yes' : 'No';
                         this.has_vibe_org = hasVibeorg ? 'Yes' : 'No';
+                        const hasCharRef = commentData.director_reference_strengths && commentData.director_reference_strengths.length > 0;
+                        this.is_char_ref = hasCharRef ? 'Yes' : 'No';
                         
                         if (this.request_type === 'PromptGenerateRequest') {
                             if (hasVibe) {
                                 this.request_type = 'Vibe转移提示词生成 (PromptGenerateRequest with Vibe Transfer)';
-                            } else {
+                            } else if (hasCharRef) { // <--- 新增判断分支
+                                this.request_type = '角色参考生成 (Character Reference)';
+                            }else {
                                 this.request_type = '提示词生成 (PromptGenerateRequest)';
                             }
                         } else if (this.request_type === 'Img2ImgRequest') {
                             if (hasVibe) {
                                 this.request_type = 'Vibe转移图生图生成 (Img2ImgRequest with Vibe Transfer)';
-                            } else {
+                            } else if (hasCharRef) { // <--- 新增判断分支
+                                this.request_type = '角色参考图生图 (Img2ImgRequest with Character Reference)';
+                            }else {
                                 this.request_type = '图生图生成 (Img2ImgRequest)';
                             }
                         } else if (this.request_type === 'NativeInfillingRequest') {
@@ -850,3 +866,4 @@
 </body>
 
 </html>
+

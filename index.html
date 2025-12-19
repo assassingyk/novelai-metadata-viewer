@@ -77,7 +77,7 @@
     <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
         <div class="navbar-brand">
             <span class="navbar-item">
-                <p class="title">Nai图像元数据查看器 v3.1.2</p>
+                <p class="title">Nai图像元数据查看器 v3.2.0</p>
             </span>
         </div>
         <div class="navbar-end">
@@ -336,11 +336,29 @@
                                             </div>
                                         </div>
                                     </div>
+                                </div>
+                                <div v-if="is_char_ref === 'Yes'" class="columns">
                                     <div class="column">
                                         <div class="field">
                                             <label class="label">使用角色参考</label>
                                             <div class="control">
                                                 <input class="input" type="text" readonly :value="is_char_ref">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">参考模式</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="char_ref_method">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column">
+                                        <div class="field">
+                                            <label class="label">参考强度</label>
+                                            <div class="control">
+                                                <input class="input" type="text" readonly :value="char_ref_strength">
                                             </div>
                                         </div>
                                     </div>
@@ -540,6 +558,8 @@
                 is_vibe: false,
                 has_vibe_org: false,
                 is_char_ref: "No",
+                char_ref_method: "",
+                char_ref_strength: "",
                 
                 v4_prompts: {
                     isV4: false,
@@ -721,6 +741,38 @@
                         const hasCharRef = commentData.director_reference_strengths && commentData.director_reference_strengths.length > 0;
                         this.is_char_ref = hasCharRef ? 'Yes' : 'No';
                         
+                        if (hasCharRef) {
+                            // 1. 判定参考模式
+                            const descriptions = commentData.director_reference_descriptions;
+                            if (descriptions && descriptions.length > 0 && descriptions[0].caption) {
+                                const baseCaption = descriptions[0].caption.base_caption;
+                                if (baseCaption === "character&style") {
+                                    this.char_ref_method = "角色+画风";
+                                } else if (baseCaption === "character") {
+                                    this.char_ref_method = "仅角色";
+                                } else {
+                                    this.char_ref_method = baseCaption || "未知";
+                                }
+                            } else {
+                                this.char_ref_method = "未知";
+                            }
+
+                            // 2. 计算参考强度: 1 - director_reference_secondary_strengths
+                            const secStrengths = commentData.director_reference_secondary_strengths;
+                            if (secStrengths && secStrengths.length > 0) {
+                                // 假设取第一个值进行计算
+                                const val = secStrengths[0];
+                                // 保留两位小数
+                                this.char_ref_strength = (1 - val).toFixed(2); 
+                            } else {
+                                this.char_ref_strength = "N/A";
+                            }
+                        } else {
+                            // 重置数据
+                            this.char_ref_method = "";
+                            this.char_ref_strength = "";
+                        }
+                        
                         if (this.request_type === 'PromptGenerateRequest') {
                             if (hasVibe) {
                                 this.request_type = 'Vibe转移提示词生成 (PromptGenerateRequest with Vibe Transfer)';
@@ -866,6 +918,7 @@
 </body>
 
 </html>
+
 
 
 
